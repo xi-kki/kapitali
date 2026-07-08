@@ -453,5 +453,11 @@ See quality gates checklist in blueprint document.
 
 ---
 
+## Repo
+
+**GitHub:** [github.com/xi-kki/kapitali](https://github.com/xi-kki/kapitali)
+
+---
+
 *Built with the VibeCoding Structure Blueprinter + Project Launch Template.*
 *Blueprint first. Skills auto-loaded. Ship fast.* 🚀

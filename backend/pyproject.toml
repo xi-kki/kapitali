@@ -1,0 +1,13 @@
+[project]
+name = "kapitali-backend"
+version = "0.1.0"
+description = "Kapitali backend — FastAPI + LlamaIndex + Groq"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.111.0",
+    "uvicorn[standard]>=0.29.0",
+    "sqlalchemy>=2.0.30",
+    "alembic>=1.13.1",
+    "llama-index>=0.10.43",
+    "python-dotenv>=1.0.1",
+]

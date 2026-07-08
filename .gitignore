@@ -16,17 +16,20 @@ node_modules/
 .next/
 out/
 dist/
+.tsbuildinfo
 
 # Environment
 .env
 .env.local
 .env.production
+.env.*.local
 
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
 # OS
 .DS_Store
@@ -37,3 +40,4 @@ docker-compose.override.yml
 
 # Logs
 *.log
+coverage/
