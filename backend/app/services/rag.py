@@ -1,112 +1,64 @@
-"""Groq + LlamaIndex RAG pipeline with streaming support."""
+"""Groq-powered chat service with streaming support — direct API, no LlamaIndex."""
 
+import json
 import logging
-from typing import AsyncGenerator, Optional
+from typing import AsyncGenerator
 
-from llama_index.core import (
-    Settings,
-    VectorStoreIndex,
-    Document,
-    StorageContext,
-)
-from llama_index.core.chat_engine import CondensePlusContextChatEngine
-from llama_index.core.memory import ChatMemoryBuffer
-from llama_index.core.postprocessor import SimilarityPostprocessor
-from llama_index.llms.groq import Groq
-from llama_index.embeddings.openai import OpenAIEmbedding
-from llama_index.vector_stores.postgres import PGVectorStore
-from sqlalchemy import create_engine
+from groq import AsyncGroq
 
 from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+SYSTEM_PROMPT = """You are Kapitali, an AI investor copilot for venture capital and investment professionals.
 
-def get_llm() -> Groq:
-    """Initialize Groq LLM."""
-    return Groq(
-        model=settings.GROQ_MODEL,
-        api_key=settings.GROQ_API_KEY,
-        temperature=0.1,
-        max_tokens=4096,
-    )
+Your purpose is to help investment teams interact with their investor data, portfolio companies, deals, 
+documents, and market intelligence through natural language.
 
+**Capabilities:**
+- Answer questions about investors, companies, deals, and portfolio metrics
+- Summarize interactions and generate diligence memos
+- Provide market intelligence and investment insights
+- Help with research and analysis
 
-def get_embed_model() -> OpenAIEmbedding:
-    """Initialize embedding model."""
-    return OpenAIEmbedding(
-        model=settings.EMBEDDINGS_MODEL,
-        api_key=settings.OPENAI_API_KEY,
-    )
+**Guidelines:**
+- Be concise, professional, and data-driven
+- When you don't know something, say so — don't make up information
+- Structure responses with clear sections and bullet points where helpful
+- Think step by step for complex analysis
+- Default to a helpful, analytical tone suited for investment professionals
 
-
-def get_vector_store() -> Optional[PGVectorStore]:
-    """Initialize pgvector store. Returns None if not available."""
-    try:
-        engine = create_engine(settings.DATABASE_URL)
-        engine.connect().close()
-        return PGVectorStore.from_params(
-            host="localhost",
-            port=5432,
-            database="kapitali",
-            user="postgres",
-            password="postgres",
-            table_name="kapitali_embeddings",
-            embed_dim=1536,
-        )
-    except Exception as e:
-        logger.warning(f"PostgreSQL/pgvector not available: {e}")
-        return None
-
-
-def get_chat_engine():
-    """Build a chat engine with optional RAG."""
-    llm = get_llm()
-
-    # Configure global settings
-    Settings.llm = llm
-    Settings.embed_model = get_embed_model()
-    Settings.chunk_size = 1024
-    Settings.chunk_overlap = 200
-
-    # Try vector store, fall back to no-RAG chat
-    vector_store = get_vector_store()
-    if vector_store:
-        try:
-            storage_context = StorageContext.from_defaults(vector_store=vector_store)
-            index = VectorStoreIndex.from_vector_store(
-                vector_store, storage_context=storage_context
-            )
-            retriever = index.as_retriever(similarity_top_k=5)
-
-            return CondensePlusContextChatEngine(
-                retriever=retriever,
-                llm=llm,
-                memory=ChatMemoryBuffer.from_defaults(token_limit=4096),
-                node_postprocessors=[SimilarityPostprocessor(similarity_cutoff=0.7)],
-                verbose=True,
-            )
-        except Exception as e:
-            logger.warning(f"Vector store index failed, falling back to LLM-only: {e}")
-
-    # Fallback: simple LLM-only chat
-    from llama_index.core.chat_engine import SimpleChatEngine
-    return SimpleChatEngine.from_defaults(llm=llm)
+**Formatting:**
+- Use markdown for structured responses
+- Use **bold** for key terms and data points
+- Use bullet points for lists
+- Use brief code blocks for any data tables"""
 
 
 async def stream_chat(messages: list[dict]) -> AsyncGenerator[str, None]:
-    """Stream a chat response from the RAG engine."""
+    """Stream a chat response from Groq directly."""
+    groq_client = AsyncGroq(api_key=settings.GROQ_API_KEY)
+
+    # Build message list with system prompt
+    groq_messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    for msg in messages:
+        groq_messages.append({"role": msg.get("role", "user"), "content": msg.get("content", "")})
+
     try:
-        chat_engine = get_chat_engine()
+        stream = await groq_client.chat.completions.create(
+            model=settings.GROQ_MODEL,
+            messages=groq_messages,
+            temperature=0.1,
+            max_tokens=4096,
+            stream=True,
+        )
 
-        # Extract the latest user message
-        user_message = messages[-1]["content"] if messages else "Hello"
-
-        response = chat_engine.stream_chat(user_message)
-
-        for token in response.response_gen:
-            yield token
+        async for chunk in stream:
+            if chunk.choices and len(chunk.choices) > 0:
+                delta = chunk.choices[0].delta
+                if delta and delta.content:
+                    yield delta.content
 
     except Exception as e:
-        logger.error(f"Chat error: {e}")
-        yield f"I encountered an error processing your request. Please try again or rephrase.\n\nError: {str(e)}"
+        logger.error(f"Groq API error: {e}")
+        yield f"\n\n> ⚠️ I encountered an error: {str(e)}\n\nPlease check your GROQ_API_KEY and try again."
