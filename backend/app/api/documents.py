@@ -7,6 +7,7 @@ from fastapi import APIRouter, UploadFile, File, HTTPException
 from pydantic import BaseModel
 
 from app.services.ingestion import ingest_document, ingest_csv_crm, is_allowed
+from app.models.base import SessionLocal, Document
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/documents", tags=["documents"])
@@ -52,3 +53,28 @@ async def upload_document(file: UploadFile = File(...)):
     except Exception as e:
         logger.error(f"Upload failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/list")
+async def list_documents():
+    """List all ingested documents with metadata."""
+    db = SessionLocal()
+    try:
+        docs = db.query(Document).all()
+        # Group by filename for the library view
+        seen = {}
+        for doc in docs:
+            fn = doc.filename
+            if fn not in seen:
+                seen[fn] = {
+                    "filename": fn,
+                    "source": doc.source,
+                    "entity_name": doc.entity_name,
+                    "entity_type": doc.entity_type,
+                    "chunks": 0,
+                    "created_at": doc.created_at.isoformat() if doc.created_at else None,
+                }
+            seen[fn]["chunks"] += 1
+        return {"documents": list(seen.values()), "total": len(seen)}
+    finally:
+        db.close()

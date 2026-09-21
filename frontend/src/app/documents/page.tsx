@@ -1,26 +1,48 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
-import { Upload, FileText, Search, Trash2, Download, Clock, X, CheckCircle2, Loader2 } from 'lucide-react'
+import { uploadDocument } from '@/lib/api'
+import { Upload, FileText, Search, Trash2, Clock, Loader2, CheckCircle2 } from 'lucide-react'
 
-const initialDocs = [
-  { name: 'Sequoia Meeting Notes.pdf', type: 'PDF', size: '2.4 MB', date: '2 days ago', status: 'indexed' },
-  { name: 'AI Infrastructure Market Map.xlsx', type: 'XLSX', size: '4.1 MB', date: '5 days ago', status: 'indexed' },
-  { name: 'Anthropic Due Diligence.docx', type: 'DOCX', size: '1.8 MB', date: '1 week ago', status: 'indexed' },
-  { name: 'Portfolio Q2 Review.pdf', type: 'PDF', size: '3.2 MB', date: '2 weeks ago', status: 'indexed' },
-  { name: 'Fundraising Deck v3.pdf', type: 'PDF', size: '8.7 MB', date: '3 weeks ago', status: 'indexed' },
-  { name: 'Competitive Landscape Analysis.csv', type: 'CSV', size: '0.6 MB', date: '1 month ago', status: 'indexed' },
-]
+interface Doc {
+  filename: string
+  source: string
+  entity_name?: string
+  entity_type?: string
+  chunks: number
+  created_at?: string
+}
 
 export default function DocumentsPage() {
   const [query, setQuery] = useState('')
   const [isDragging, setIsDragging] = useState(false)
   const [uploading, setUploading] = useState(false)
   const [uploadProgress, setUploadProgress] = useState(0)
-  const [docs, setDocs] = useState(initialDocs)
+  const [uploadStatus, setUploadStatus] = useState('')
+  const [docs, setDocs] = useState<Doc[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    loadDocs()
+  }, [])
+
+  const loadDocs = async () => {
+    setLoading(true)
+    try {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'}/api/documents/list`)
+      if (res.ok) {
+        const data = await res.json()
+        setDocs(data.documents || [])
+      }
+    } catch {
+      setDocs([])
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault()
@@ -36,37 +58,41 @@ export default function DocumentsPage() {
     setIsDragging(false)
     const files = Array.from(e.dataTransfer.files)
     if (files.length === 0) return
+    await processFiles(files)
+  }, [])
 
+  const handleFileInput = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || [])
+    if (files.length === 0) return
+    await processFiles(files)
+  }, [])
+
+  const processFiles = async (files: File[]) => {
     setUploading(true)
     for (let i = 0; i < files.length; i++) {
       setUploadProgress(Math.round(((i + 1) / files.length) * 100))
-      await new Promise((r) => setTimeout(r, 1000))
-      setDocs((prev) => [
-        {
-          name: files[i].name,
-          type: files[i].name.split('.').pop()?.toUpperCase() || 'FILE',
-          size: `${(files[i].size / (1024 * 1024)).toFixed(1)} MB`,
-          date: 'just now',
-          status: 'indexed',
-        },
-        ...prev,
-      ])
+      setUploadStatus(`Processing ${files[i].name}...`)
+      try {
+        await uploadDocument(files[i])
+      } catch (err) {
+        console.error('Upload failed:', err)
+      }
     }
     setUploading(false)
     setUploadProgress(0)
-  }, [])
+    setUploadStatus('')
+    await loadDocs()
+  }
 
-  const filtered = docs.filter((d) => d.name.toLowerCase().includes(query.toLowerCase()))
+  const filtered = docs.filter((d) => d.filename.toLowerCase().includes(query.toLowerCase()))
 
   return (
     <div className="mx-auto max-w-6xl px-8 py-8">
-      {/* Header */}
       <div className="mb-6">
         <h1 className="text-3xl font-semibold text-white tracking-tight">Document Library</h1>
         <p className="text-muted-foreground mt-1">Upload PDFs, memos, financials — instantly searchable by Kapitali.</p>
       </div>
 
-      {/* Upload Zone */}
       <div
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
@@ -78,12 +104,9 @@ export default function DocumentsPage() {
         {uploading ? (
           <div className="py-4">
             <Loader2 className="h-8 w-8 text-brand-400 animate-spin mx-auto mb-3" />
-            <p className="text-sm font-medium text-foreground mb-2">Processing documents...</p>
+            <p className="text-sm font-medium text-foreground mb-2">{uploadStatus || 'Processing...'}</p>
             <div className="w-full max-w-md mx-auto bg-surface-200 rounded-full h-2 overflow-hidden">
-              <div
-                className="h-full bg-brand-500 rounded-full transition-all duration-300"
-                style={{ width: `${uploadProgress}%` }}
-              />
+              <div className="h-full bg-brand-500 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
             </div>
             <p className="text-xs text-muted-foreground mt-2">{uploadProgress}%</p>
           </div>
@@ -97,16 +120,20 @@ export default function DocumentsPage() {
             <p className="text-sm font-medium text-foreground mb-1">
               {isDragging ? 'Drop files here' : 'Drag & drop files here'}
             </p>
-            <p className="text-xs text-muted-foreground mb-4">or click to browse — PDF, CSV, DOCX, XLSX, TXT, MD</p>
-            <Button variant="outline" size="sm">
-              <Upload className="h-4 w-4 mr-2" />
-              Browse files
-            </Button>
+            <p className="text-xs text-muted-foreground mb-4">or click to browse — PDF, CSV, DOCX, TXT, MD</p>
+            <label>
+              <Button variant="outline" size="sm" asChild>
+                <span>
+                  <Upload className="h-4 w-4 mr-2" />
+                  Browse files
+                </span>
+              </Button>
+              <input type="file" className="hidden" multiple accept=".pdf,.csv,.docx,.txt,.md" onChange={handleFileInput} />
+            </label>
           </>
         )}
       </div>
 
-      {/* Search */}
       <div className="glass rounded-xl p-1 mb-6">
         <div className="flex items-center gap-2 px-4">
           <Search className="h-4 w-4 text-muted-foreground shrink-0" />
@@ -119,33 +146,44 @@ export default function DocumentsPage() {
         </div>
       </div>
 
-      {/* Document List */}
       <div className="glass rounded-xl overflow-hidden">
-        <div className="grid grid-cols-[1fr_80px_100px_80px_40px] gap-4 px-5 py-3 border-b border-surface-150 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+        <div className="grid grid-cols-[1fr_80px_80px_80px] gap-4 px-5 py-3 border-b border-surface-150 text-xs font-medium text-muted-foreground uppercase tracking-wider">
           <span>Name</span>
-          <span>Type</span>
-          <span>Size</span>
-          <span>Date</span>
-          <span></span>
+          <span>Source</span>
+          <span>Chunks</span>
+          <span>Added</span>
         </div>
         <div className="divide-y divide-surface-150">
-          {filtered.map((doc) => (
-            <div key={doc.name} className="grid grid-cols-[1fr_80px_100px_80px_40px] gap-4 px-5 py-3.5 items-center hover:bg-surface-50 transition-colors group">
-              <div className="flex items-center gap-3 min-w-0">
-                <FileText className="h-4 w-4 text-brand-400 shrink-0" />
-                <span className="text-sm text-foreground truncate">{doc.name}</span>
-              </div>
-              <Badge variant="secondary" className="text-[10px] w-fit">{doc.type}</Badge>
-              <span className="text-xs text-muted-foreground">{doc.size}</span>
-              <div className="flex items-center gap-1.5">
-                <Clock className="h-3 w-3 text-muted-foreground/60" />
-                <span className="text-xs text-muted-foreground">{doc.date}</span>
-              </div>
-              <button className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-red-400">
-                <Trash2 className="h-4 w-4" />
-              </button>
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="h-5 w-5 text-brand-400 animate-spin" />
             </div>
-          ))}
+          ) : filtered.length === 0 ? (
+            <div className="text-center py-12">
+              <FileText className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+              <p className="text-sm text-muted-foreground">No documents yet. Upload something to get started.</p>
+            </div>
+          ) : (
+            filtered.map((doc) => (
+              <div key={doc.filename} className="grid grid-cols-[1fr_80px_80px_80px] gap-4 px-5 py-3.5 items-center hover:bg-surface-50 transition-colors group">
+                <div className="flex items-center gap-3 min-w-0">
+                  <FileText className="h-4 w-4 text-brand-400 shrink-0" />
+                  <div className="min-w-0">
+                    <span className="text-sm text-foreground truncate block">{doc.filename}</span>
+                    {doc.entity_name && <span className="text-xs text-muted-foreground">{doc.entity_name}</span>}
+                  </div>
+                </div>
+                <Badge variant={doc.source === 'crm_import' ? 'default' : 'secondary'} className="text-[10px] w-fit">
+                  {doc.source === 'crm_import' ? 'CRM' : 'Upload'}
+                </Badge>
+                <span className="text-xs text-muted-foreground">{doc.chunks}</span>
+                <div className="flex items-center gap-1.5">
+                  <CheckCircle2 className="h-3 w-3 text-emerald-400" />
+                  <span className="text-xs text-muted-foreground">Indexed</span>
+                </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>

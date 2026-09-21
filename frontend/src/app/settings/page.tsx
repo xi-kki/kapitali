@@ -1,16 +1,28 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Badge } from '@/components/ui/badge'
 import { Separator } from '@/components/ui/separator'
-import { Key, Database, Users, Palette, Bell, RefreshCw, Eye, EyeOff, CheckCircle2 } from 'lucide-react'
+import { Key, Database, Users, Palette, Bell, RefreshCw, Eye, EyeOff, CheckCircle2, Loader2 } from 'lucide-react'
+
+const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
 export default function SettingsPage() {
-  const [groqKey, setGroqKey] = useState('sk-••••••••••••••••••••••••')
+  const [groqKey, setGroqKey] = useState('')
   const [showGroq, setShowGroq] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [health, setHealth] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetch(`${API}/health`)
+      .then((r) => r.json())
+      .then(setHealth)
+      .catch(() => {})
+      .finally(() => setLoading(false))
+  }, [])
 
   const handleSave = () => {
     setSaved(true)
@@ -19,7 +31,6 @@ export default function SettingsPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-8 py-8">
-      {/* Header */}
       <div className="mb-8">
         <h1 className="text-3xl font-semibold text-white tracking-tight">Settings</h1>
         <p className="text-muted-foreground mt-1">Manage your API keys, data sources, and preferences.</p>
@@ -47,6 +58,7 @@ export default function SettingsPage() {
                     type={showGroq ? 'text' : 'password'}
                     value={groqKey}
                     onChange={(e) => setGroqKey(e.target.value)}
+                    placeholder="gsk_..."
                     className="pr-10"
                   />
                   <button
@@ -65,43 +77,43 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        {/* Data Sources */}
+        {/* System Status */}
         <div className="glass rounded-xl p-6">
           <div className="flex items-center gap-3 mb-4">
-            <div className="h-10 w-10 rounded-xl bg-blue-500/10 flex items-center justify-center">
-              <Database className="h-5 w-5 text-blue-400" />
+            <div className="h-10 w-10 rounded-xl bg-emerald-500/10 flex items-center justify-center">
+              <Database className="h-5 w-5 text-emerald-400" />
             </div>
             <div>
-              <h2 className="font-semibold text-white">Data Sources</h2>
-              <p className="text-xs text-muted-foreground">Connected data sources for Kapitali to index and query.</p>
+              <h2 className="font-semibold text-white">System Status</h2>
+              <p className="text-xs text-muted-foreground">Backend health and RAG pipeline status.</p>
             </div>
           </div>
           <Separator className="mb-4" />
-          <div className="space-y-3">
-            <div className="flex items-center justify-between rounded-lg bg-surface-50 p-3.5 border border-surface-150">
-              <div className="flex items-center gap-3">
-                <div className="h-2 w-2 rounded-full bg-emerald-400" />
-                <div>
-                  <p className="text-sm font-medium text-foreground">CRM — CSV Import</p>
-                  <p className="text-xs text-muted-foreground">342 contacts · 186 companies · 24 deals · Last synced 2h ago</p>
-                </div>
-              </div>
-              <Button variant="outline" size="sm">
-                <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
-                Sync
-              </Button>
+          {loading ? (
+            <div className="flex items-center gap-2 py-4">
+              <Loader2 className="h-4 w-4 text-brand-400 animate-spin" />
+              <span className="text-sm text-muted-foreground">Checking status...</span>
             </div>
-            <div className="flex items-center justify-between rounded-lg bg-surface-50 p-3.5 border border-surface-150">
-              <div className="flex items-center gap-3">
-                <div className="h-2 w-2 rounded-full bg-emerald-400" />
-                <div>
-                  <p className="text-sm font-medium text-foreground">Document Library</p>
-                  <p className="text-xs text-muted-foreground">89 documents · 156 MB total · All indexed</p>
+          ) : health ? (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-lg bg-surface-50 p-3.5 border border-surface-150">
+                <div className="flex items-center gap-2 mb-1">
+                  <div className={`h-2 w-2 rounded-full ${health.groq_configured ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                  <p className="text-sm font-medium text-foreground">Groq API</p>
                 </div>
+                <p className="text-xs text-muted-foreground">{health.groq_configured ? `Connected — ${health.model}` : 'Not configured'}</p>
               </div>
-              <Badge variant="success" className="text-[10px]">Active</Badge>
+              <div className="rounded-lg bg-surface-50 p-3.5 border border-surface-150">
+                <div className="flex items-center gap-2 mb-1">
+                  <div className={`h-2 w-2 rounded-full ${health.database?.includes('exists') ? 'bg-emerald-400' : 'bg-amber-400'}`} />
+                  <p className="text-sm font-medium text-foreground">Database</p>
+                </div>
+                <p className="text-xs text-muted-foreground">{health.rag_pipeline || 'SQLite FTS5'}</p>
+              </div>
             </div>
-          </div>
+          ) : (
+            <p className="text-sm text-red-400">Backend unreachable — is it running on port 8000?</p>
+          )}
         </div>
 
         {/* Preferences */}
@@ -126,34 +138,11 @@ export default function SettingsPage() {
             </div>
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-foreground">Notifications</p>
-                <p className="text-xs text-muted-foreground">Daily digest, proactive insights, deal alerts</p>
-              </div>
-              <Button variant="outline" size="sm">
-                <Bell className="h-3.5 w-3.5 mr-1.5" />
-                Configure
-              </Button>
-            </div>
-            <div className="flex items-center justify-between">
-              <div>
                 <p className="text-sm font-medium text-foreground">Default Export Format</p>
-                <p className="text-xs text-muted-foreground">PDF for reports, Markdown for summaries</p>
+                <p className="text-xs text-muted-foreground">Markdown for reports, CSV for data</p>
               </div>
-              <Badge variant="secondary">PDF</Badge>
+              <Badge variant="secondary">Markdown</Badge>
             </div>
-          </div>
-
-          {/* User Permissions */}
-          <Separator className="my-4" />
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <Users className="h-5 w-5 text-muted-foreground" />
-              <div>
-                <p className="text-sm font-medium text-foreground">Team Members</p>
-                <p className="text-xs text-muted-foreground">1 user — solo plan</p>
-              </div>
-            </div>
-            <Button variant="outline" size="sm">Manage</Button>
           </div>
         </div>
       </div>

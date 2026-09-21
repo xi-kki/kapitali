@@ -16,6 +16,7 @@ import {
   MessageSquare,
 } from 'lucide-react'
 import Link from 'next/link'
+import { cn } from '@/lib/utils'
 
 const stats = [
   { label: 'Active Deals', value: '24', change: '+3', icon: TrendingUp, color: 'text-emerald-400' },
@@ -159,8 +160,4 @@ export default function Dashboard() {
       </div>
     </div>
   )
-}
-
-function cn(...classes: (string | boolean | undefined | null)[]) {
-  return classes.filter(Boolean).join(' ')
 }

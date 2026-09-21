@@ -3,6 +3,7 @@ import { Inter } from 'next/font/google'
 import './globals.css'
 import { SidebarProvider } from '@/components/layout/sidebar-provider'
 import { Sidebar } from '@/components/layout/sidebar'
+import { ErrorBoundary } from '@/components/error-boundary'
 
 const inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 
@@ -23,7 +24,9 @@ export default function RootLayout({
           <div className="flex h-screen overflow-hidden">
             <Sidebar />
             <main className="flex-1 overflow-y-auto bg-background">
-              {children}
+              <ErrorBoundary>
+                {children}
+              </ErrorBoundary>
             </main>
           </div>
         </SidebarProvider>

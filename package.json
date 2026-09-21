@@ -4,6 +4,9 @@
   "description": "Intelligence for Capital — AI-native investor copilot with Groq-powered RAG",
   "private": true,
   "scripts": {
+    "dev": "npm --prefix frontend run dev",
+    "build": "npm --prefix frontend run build",
+    "start": "npm --prefix frontend run start",
     "lint": "eslint . --ext .js,.ts,.jsx,.tsx",
     "lint:fix": "eslint . --ext .js,.ts,.jsx,.tsx --fix",
     "format": "prettier --write .",
